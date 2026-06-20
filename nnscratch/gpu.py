@@ -54,10 +54,16 @@ def grid_2d(n_rows: int, n_cols: int, tpb: int = TPB):
     floor-division guarantees full coverage for ANY size, which is exactly why
     every kernel also carries an ``if row < shape ...`` bounds guard for the
     extra threads this creates.
+
+    Axis convention (must match the kernels): Numba's ``cuda.grid(2)`` returns
+    ``(x, y)`` where ``x`` is tied to ``threadIdx.x`` / ``blockIdx.x`` and
+    ``y`` to the ``.y`` indices.  The kernels read ``row, col = cuda.grid(2)``
+    -- so ``x`` indexes ROWS and ``y`` indexes COLS.  Therefore the first grid
+    dimension must size the ROWS and the second the COLS.
     """
     threads_per_block = (tpb, tpb)
-    blocks_per_grid_x = (n_cols + tpb - 1) // tpb   # x maps to columns
-    blocks_per_grid_y = (n_rows + tpb - 1) // tpb   # y maps to rows
+    blocks_per_grid_x = (n_rows + tpb - 1) // tpb   # x maps to rows
+    blocks_per_grid_y = (n_cols + tpb - 1) // tpb   # y maps to cols
     blocks_per_grid = (blocks_per_grid_x, blocks_per_grid_y)
     return blocks_per_grid, threads_per_block
 

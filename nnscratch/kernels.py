@@ -41,6 +41,15 @@ from __future__ import annotations
 # We degrade gracefully so `import nnscratch` works everywhere (CI, laptops
 # without an NVIDIA card, etc.).  `CUDA_AVAILABLE` is the single source of
 # truth the rest of the package checks before trying to launch a kernel.
+#
+# Wire up the pip-wheel CUDA toolkit (sets CUDA_HOME etc.) BEFORE importing
+# numba.cuda -- this is what lets the kernels compile without a conda/system
+# CUDA install.  No-op if numba/CUDA isn't present.
+try:
+    from . import _cuda_setup  # noqa: F401  (side-effect: configures CUDA_HOME)
+except Exception:
+    pass
+
 try:
     from numba import cuda, float32
     import math
@@ -90,8 +99,10 @@ def matmul_kernel(A, B, C):
     ``cuda.grid(2)`` returns this thread's absolute (row, col) coordinate in the
     2-D launch grid -- it is shorthand for::
 
-        row = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
-        col = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+        row = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+        col = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
+
+    (``grid_2d`` in gpu.py sizes the x-dimension to rows and y to cols to match.)
 
     Parameters
     ----------
@@ -137,34 +148,38 @@ def matmul_tiled_kernel(A, B, C):
     sA = cuda.shared.array(shape=(TPB, TPB), dtype=float32)
     sB = cuda.shared.array(shape=(TPB, TPB), dtype=float32)
 
+    # row is tied to threadIdx.x (tx), col to threadIdx.y (ty) -- this matches
+    # grid_2d()'s (rows, cols) axis sizing.
     row, col = cuda.grid(2)
-    tx = cuda.threadIdx.x
-    ty = cuda.threadIdx.y
+    tx = cuda.threadIdx.x   # local row within the tile
+    ty = cuda.threadIdx.y   # local col within the tile
 
     acc = float32(0.0)
-    # Number of tiles we must slide across the K dimension (rounded up).
+    # Number of tiles we must slide across the shared K dimension (rounded up).
     n_tiles = (A.shape[1] + TPB - 1) // TPB
 
     for t in range(n_tiles):
-        # --- cooperative load of one tile into shared memory ---
-        a_col = t * TPB + tx
+        # --- cooperative load of one A-tile and one B-tile into shared mem ---
+        # A-tile: this thread loads A[row, t*TPB + ty].
+        a_col = t * TPB + ty
         if row < A.shape[0] and a_col < A.shape[1]:
-            sA[ty, tx] = A[row, a_col]
+            sA[tx, ty] = A[row, a_col]
         else:
-            sA[ty, tx] = float32(0.0)
+            sA[tx, ty] = float32(0.0)
 
-        b_row = t * TPB + ty
+        # B-tile: this thread loads B[t*TPB + tx, col].
+        b_row = t * TPB + tx
         if b_row < B.shape[0] and col < B.shape[1]:
-            sB[ty, tx] = B[b_row, col]
+            sB[tx, ty] = B[b_row, col]
         else:
-            sB[ty, tx] = float32(0.0)
+            sB[tx, ty] = float32(0.0)
 
         # Wait until every thread has finished loading before we read the tile.
         cuda.syncthreads()
 
-        # --- multiply the two tiles ---
+        # --- multiply the two cached tiles ---
         for k in range(TPB):
-            acc += sA[ty, k] * sB[k, tx]
+            acc += sA[tx, k] * sB[k, ty]
 
         # Wait until all threads are done with the tile before overwriting it.
         cuda.syncthreads()

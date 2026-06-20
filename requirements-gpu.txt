@@ -1,0 +1,25 @@
+# Exact, verified-working GPU stack
+# =================================
+# Tested on: Windows 11 + NVIDIA GeForce RTX 3050 6GB Laptop GPU (CC 8.6),
+#            driver 591.44 (CUDA 13.1), Python 3.12.10.
+#
+# Install into a clean Python 3.12 venv:
+#     py -3.12 -m venv .venv
+#     .venv\Scripts\python -m pip install -U pip
+#     .venv\Scripts\python -m pip install -r requirements-gpu.txt
+#
+# No conda and no system-wide CUDA toolkit are required -- the CUDA compiler
+# (NVVM) and runtime come from the nvidia-*-cu12 wheels below.  nnscratch's
+# bootstrap (nnscratch/_cuda_setup.py) wires them up for Numba automatically.
+
+numpy==2.1.3
+numba==0.65.1
+llvmlite==0.47.0
+
+# CUDA toolkit pieces as pip wheels (CUDA 12.9; works under a CUDA 13 driver).
+nvidia-cuda-nvcc-cu12==12.9.86      # NVVM compiler + libdevice
+nvidia-cuda-runtime-cu12==12.9.79   # cudart (needed for arch/version detection)
+nvidia-cuda-nvrtc-cu12==12.9.86     # optional, pulled for completeness
+
+# Pulled in transitively; pinned for reproducibility.
+cuda-python==13.3.1
