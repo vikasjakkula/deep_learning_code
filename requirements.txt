@@ -1,0 +1,11 @@
+# Core requirement (CPU paths, data, benchmark reference)
+numpy>=1.23
+
+# GPU acceleration -- needed only to actually run the CUDA kernels on an
+# NVIDIA card (e.g. the RTX 3050). Install the NVIDIA CUDA toolkit/drivers too.
+#   numba ships the CUDA target; on recent setups you may also need:
+#   pip install numba cuda-python
+numba>=0.59 ; python_version < "3.13"
+
+# Optional: nicer test runner
+pytest>=7.0
