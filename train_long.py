@@ -41,6 +41,7 @@ import numpy as np
 
 from nnscratch import gpu
 from nnscratch.gpu_mlp import MLPGPU, one_hot
+from nnscratch import gpu_fast
 from nnscratch import data as datamod
 
 
@@ -120,6 +121,10 @@ def main():
     ap.add_argument("--clip", type=float, default=5.0,
                     help="gradient clipping max-norm (stabilises long runs)")
     ap.add_argument("--seed", type=int, default=1)
+    # engine
+    ap.add_argument("--fast", action=argparse.BooleanOptionalAction, default=True,
+                    help="use the device-resident GPU engine (much faster for "
+                         "wide nets). --no-fast uses the simpler per-call engine.")
     # io
     ap.add_argument("--out", default="models")
     ap.add_argument("--resume", default="", help="path to a .npz checkpoint")
@@ -138,20 +143,41 @@ def main():
 
     Xtr, Ytr, Xva, yva, n_classes, title = build_dataset(args)
     n_features = Xtr.shape[1]
+    arch = [n_features] + list(args.hidden) + [n_classes]
+
+    use_fast = args.fast and gpu_fast.CUDA_AVAILABLE
+    engine_name = ("FAST device-resident GPU" if use_fast
+                   else ("per-call GPU" if gpu.CUDA_AVAILABLE else "NumPy CPU"))
 
     # build or resume model
-    if args.resume and os.path.exists(args.resume):
-        net = MLPGPU.load(args.resume, use_gpu=True)
-        print(f"Resumed model from {args.resume}")
+    if use_fast:
+        from numba import cuda
+        if args.resume and os.path.exists(args.resume):
+            net = gpu_fast.FastMLPGPU.load(args.resume, batch_size=args.batch_size)
+            print(f"Resumed FAST model from {args.resume}")
+        else:
+            net = gpu_fast.FastMLPGPU(arch, seed=args.seed,
+                                      hidden_activation=args.activation,
+                                      batch_size=args.batch_size)
+        # upload the whole dataset to the GPU ONCE (stays resident)
+        d_X = cuda.to_device(np.ascontiguousarray(Xtr, np.float32))
+        d_Y = cuda.to_device(np.ascontiguousarray(Ytr, np.float32))
+        n_train = Xtr.shape[0]
+        # a small fixed slice for cheap per-epoch loss reporting
+        loss_X, loss_Y = Xtr[:4000], Ytr[:4000]
     else:
-        arch = [n_features] + list(args.hidden) + [n_classes]
-        net = MLPGPU(arch, seed=args.seed,
-                     hidden_activation=args.activation, use_gpu=True)
+        if args.resume and os.path.exists(args.resume):
+            net = MLPGPU.load(args.resume, use_gpu=True)
+            print(f"Resumed model from {args.resume}")
+        else:
+            net = MLPGPU(arch, seed=args.seed,
+                         hidden_activation=args.activation, use_gpu=True)
 
     print("=" * 70)
     print(" LONG GPU TRAINING")
     print("=" * 70)
     print(f" Backend     : {gpu.device_info()}")
+    print(f" Engine      : {engine_name}")
     print(f" Dataset     : {title}")
     print(f" Train/Val   : {Xtr.shape[0]} / {Xva.shape[0]} samples")
     print(f" Architecture: {net.layer_sizes}  ({net.n_params():,} params)")
@@ -193,8 +219,13 @@ def main():
 
             lr = args.lr / (1.0 + args.lr_decay * epoch)
             ep_t0 = time.perf_counter()
-            loss = net.train_epoch(Xtr, Ytr, lr, args.batch_size,
-                                   args.momentum, rng, max_grad_norm=args.clip)
+            if use_fast:
+                net.train_epoch(d_X, d_Y, n_train, lr, args.momentum,
+                                args.clip, rng.permutation(n_train))
+                loss = net.loss(loss_X, loss_Y)
+            else:
+                loss = net.train_epoch(Xtr, Ytr, lr, args.batch_size,
+                                       args.momentum, rng, max_grad_norm=args.clip)
             ep_dt = time.perf_counter() - ep_t0
             val_acc = net.evaluate(Xva, yva)
             elapsed = time.perf_counter() - t0
