@@ -60,9 +60,11 @@ def build_dataset(args):
         rows = datamod.make_spiral(n_samples=args.samples,
                                    n_classes=args.classes,
                                    n_features=args.features,
-                                   noise=args.spiral_noise, seed=args.seed)
+                                   noise=args.spiral_noise,
+                                   n_turns=args.spiral_turns, seed=args.seed)
         title = (f"Intertwined spiral ({args.samples} samples, "
-                 f"{args.features} features, {args.classes} classes) - HARD")
+                 f"{args.features} features, {args.classes} classes, "
+                 f"{args.spiral_turns} turns) - HARD")
     elif args.dataset == "synthetic":
         rows = datamod.make_blobs(n_samples=args.samples,
                                   n_features=args.features,
@@ -111,6 +113,8 @@ def main():
                     help="blob spread for --dataset synthetic (higher = harder)")
     ap.add_argument("--spiral-noise", type=float, default=0.18,
                     help="noise for --dataset spiral (higher = harder)")
+    ap.add_argument("--spiral-turns", type=float, default=2.5,
+                    help="how many times each spiral arm wraps (more = harder)")
     # model / optimiser
     ap.add_argument("--hidden", type=int, nargs="+", default=[256, 128, 64])
     ap.add_argument("--activation", choices=["relu", "sigmoid"], default="relu")
