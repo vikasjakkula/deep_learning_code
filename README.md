@@ -134,7 +134,31 @@ It writes to `models/`: `best_model.npz` (highest accuracy so far),
 The default **spiral** dataset is non-linear and hard on purpose, so accuracy
 keeps climbing the longer you train — that's the whole point. Key flags:
 `--minutes`, `--epochs`, `--hidden`, `--batch-size`, `--lr`, `--momentum`,
-`--lr-decay`, `--dataset {spiral,synthetic,seeds,heart,moons}`, `--resume`.
+`--lr-decay`, `--dataset {spiral,synthetic,seeds,heart,moons}`, `--resume`,
+`--fast/--no-fast`, `--eval-every`, `--spiral-turns`, `--spiral-noise`.
+
+**Make it harder:** more classes (arms) and more `--spiral-turns` wind the arms
+more tightly, so the net needs many more epochs to separate them:
+
+```bash
+# a genuinely hard 6-arm spiral; reaches 100% + ~99.7% confidence
+python train_long.py --dataset spiral --classes 6 --spiral-turns 2.5 \
+    --hidden 512 512 256 --lr 0.06 --epochs 90 --fast
+```
+
+Then see the model's confidence (predicts like a near-sure event):
+
+```bash
+python evaluate_model.py --dataset spiral --classes 6 --spiral-noise 0.05
+python plot_training.py        # writes models/training_curve.png
+```
+
+> **Low-memory machines:** the heavy math is on the GPU, but per-epoch metrics
+> allocate a little host RAM. If your system memory is nearly full (small/disabled
+> pagefile), a long run can be cut short by a memory error. Mitigations: raise
+> `--eval-every` (e.g. `5`), keep `--fast` on, and close other apps or enlarge the
+> Windows pagefile (System → Advanced → Performance → Virtual memory). The trainer
+> already reuses buffers and skips a metric step rather than crashing.
 
 Tiny code example:
 ```python
