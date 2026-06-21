@@ -21,5 +21,8 @@ nvidia-cuda-nvcc-cu12==12.9.86      # NVVM compiler + libdevice
 nvidia-cuda-runtime-cu12==12.9.79   # cudart (needed for arch/version detection)
 nvidia-cuda-nvrtc-cu12==12.9.86     # optional, pulled for completeness
 
+# Plotting the learning curve (plot_training.py).
+matplotlib>=3.7
+
 # Pulled in transitively; pinned for reproducibility.
 cuda-python==13.3.1

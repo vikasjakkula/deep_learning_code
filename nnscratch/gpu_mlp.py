@@ -170,7 +170,23 @@ class MLPGPU:
     # ------------------------------------------------------------------
     # one epoch
     # ------------------------------------------------------------------
-    def train_epoch(self, X, Y, lr, batch_size, momentum, rng):
+    def _clip(self, dW, db, max_norm):
+        """Global-norm gradient clipping -- the standard cure for the loss
+        'spiking' that makes long, high-momentum runs diverge.  If the combined
+        gradient is longer than ``max_norm`` we scale the whole thing down so the
+        update direction is kept but the step size stays sane."""
+        if not max_norm or max_norm <= 0:
+            return dW, db
+        sq = sum(float(np.sum(g * g)) for g in dW) + \
+            sum(float(np.sum(g * g)) for g in db)
+        norm = np.sqrt(sq)
+        if norm > max_norm:
+            scale = max_norm / (norm + 1e-12)
+            dW = [g * scale for g in dW]
+            db = [g * scale for g in db]
+        return dW, db
+
+    def train_epoch(self, X, Y, lr, batch_size, momentum, rng, max_grad_norm=5.0):
         n = X.shape[0]
         idx = rng.permutation(n)
         X, Y = X[idx], Y[idx]
@@ -182,6 +198,7 @@ class MLPGPU:
             probs = np.clip(A[-1], 1e-12, 1.0)
             total_loss += float(-np.sum(yb * np.log(probs)))
             dW, db = self.backward(A, Z, yb)
+            dW, db = self._clip(dW, db, max_grad_norm)
             self._step(dW, db, lr, momentum)
         return total_loss / n
 

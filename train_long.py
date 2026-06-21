@@ -117,6 +117,8 @@ def main():
     ap.add_argument("--lr", type=float, default=0.1)
     ap.add_argument("--momentum", type=float, default=0.9)
     ap.add_argument("--lr-decay", type=float, default=1e-4)
+    ap.add_argument("--clip", type=float, default=5.0,
+                    help="gradient clipping max-norm (stabilises long runs)")
     ap.add_argument("--seed", type=int, default=1)
     # io
     ap.add_argument("--out", default="models")
@@ -192,7 +194,7 @@ def main():
             lr = args.lr / (1.0 + args.lr_decay * epoch)
             ep_t0 = time.perf_counter()
             loss = net.train_epoch(Xtr, Ytr, lr, args.batch_size,
-                                   args.momentum, rng)
+                                   args.momentum, rng, max_grad_norm=args.clip)
             ep_dt = time.perf_counter() - ep_t0
             val_acc = net.evaluate(Xva, yva)
             elapsed = time.perf_counter() - t0
