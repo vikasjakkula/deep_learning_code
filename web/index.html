@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>nnscratch — Neural Network from Scratch (GPU)</title>
+<style>
+  :root{
+    --bg:#0b1020; --card:#141a2e; --ink:#e7ecf5; --mut:#9fb0cc;
+    --line:#243049; --accent:#5b8cff; --good:#22c55e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.65}
+  .wrap{max-width:1040px;margin:0 auto;padding:28px 20px 80px}
+  header{padding:40px 0 10px}
+  h1{font-size:2.3rem;margin:0 0 6px;line-height:1.15}
+  h1 .grad{background:linear-gradient(90deg,#5b8cff,#22c55e);
+           -webkit-background-clip:text;background-clip:text;color:transparent}
+  .tag{color:var(--mut);font-size:1.05rem;margin:0 0 8px}
+  h2{font-size:1.5rem;margin:34px 0 8px;border-bottom:1px solid var(--line);
+     padding-bottom:6px}
+  h3{font-size:1.12rem;margin:20px 0 4px;color:#c7d6f5}
+  p{color:#d7e0f0;margin:8px 0}
+  a{color:var(--accent)}
+  code{background:#0e1426;border:1px solid var(--line);border-radius:5px;
+       padding:1px 6px;font-size:.9em}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+         gap:14px;margin:18px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+        padding:16px}
+  .card .big{font-size:2rem;font-weight:700;color:#fff}
+  .card .lbl{color:var(--mut);font-size:.85rem;margin-top:2px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;
+         padding:18px;margin:16px 0}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.row{grid-template-columns:1fr}}
+  canvas{width:100%;height:auto;background:#0e1426;border-radius:10px;
+         border:1px solid var(--line)}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;font-size:.9rem;
+          color:var(--mut)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:12px;height:12px;border-radius:50%;display:inline-block}
+  table{width:100%;border-collapse:collapse;font-size:.92rem;margin-top:6px}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:600}
+  .ok{color:var(--good)} .bad{color:#f87171}
+  .bar{height:10px;background:#0e1426;border-radius:6px;overflow:hidden;
+       border:1px solid var(--line)}
+  .bar>i{display:block;height:100%;background:linear-gradient(90deg,#5b8cff,#22c55e)}
+  .muted{color:var(--mut)} .small{font-size:.86rem}
+  ul{color:#d7e0f0} li{margin:4px 0}
+  .pill{display:inline-block;background:#0e1426;border:1px solid var(--line);
+        border-radius:999px;padding:3px 10px;font-size:.8rem;color:var(--mut);
+        margin-right:6px}
+  footer{margin-top:40px;color:var(--mut);font-size:.85rem;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>🧠⚡ <span class="grad">nnscratch</span> — a neural network built from scratch, trained on the GPU</h1>
+  <p class="tag">Pure-Python artificial neural network + hand-written CUDA kernels · NVIDIA RTX 3050</p>
+  <div>
+    <span class="pill">no PyTorch / TensorFlow core</span>
+    <span class="pill">Numba CUDA</span>
+    <span class="pill">backprop from first principles</span>
+  </div>
+</header>
+
+<!-- ============ SUMMARY ============ -->
+<h2>What is this project?</h2>
+<p>
+  <b>nnscratch</b> is a small machine-learning framework that builds an
+  <b>Artificial Neural Network (ANN)</b> entirely from scratch in plain Python —
+  every neuron, every weight, the forward pass and the learning algorithm
+  (backpropagation) are written by hand, with no high-level libraries doing the
+  hard part. The heavy number-crunching (big matrix multiplications) is then
+  pushed onto an <b>NVIDIA GPU</b> using custom <b>CUDA kernels</b>, so the network
+  trains fast in parallel across thousands of GPU cores.
+</p>
+<p>
+  The page below shows a real trained model's <b>predictions</b>: every point is
+  coloured by the class the network thinks it belongs to, on top of the model's
+  learned <b>decision boundary</b>. It also reports how <b>accurate</b> and how
+  <b>confident</b> the model is — a strong model should be both right and sure.
+</p>
+
+<!-- ============ STATS ============ -->
+<div class="cards" id="cards"></div>
+
+<!-- ============ VISUALS ============ -->
+<h2>What the model predicts</h2>
+<div class="row">
+  <div class="panel">
+    <h3>Decision boundary &amp; predictions</h3>
+    <canvas id="plot" width="520" height="520"></canvas>
+    <div class="legend" id="legend"></div>
+    <p class="small muted">Background shading = the class the network predicts for
+      every spot on the plane. Dots = data points (ringed in red if mis-classified).</p>
+  </div>
+  <div class="panel">
+    <h3>Getting stronger over time</h3>
+    <img id="curve" src="training_curve.png" alt="training curve"
+         style="width:100%;border-radius:10px;border:1px solid var(--line)"
+         onerror="this.style.display='none';document.getElementById('nocurve').style.display='block'"/>
+    <p id="nocurve" style="display:none" class="muted small">
+      (Run <code>python plot_training.py</code> then <code>python export_web.py</code>
+      to add the learning-curve image.)</p>
+    <h3>How sure is it?</h3>
+    <div id="bars"></div>
+    <p class="small muted">Share of predictions made above each confidence level.
+      A confident model piles up near 100%.</p>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>Example predictions</h3>
+  <table id="examples"><thead><tr>
+    <th>#</th><th>input (x, y)</th><th>true class</th><th>predicted</th>
+    <th>probability</th><th>result</th>
+  </tr></thead><tbody></tbody></table>
+</div>
+
+<!-- ============ ANN / ML EXPLAINER ============ -->
+<h2>All about Artificial Neural Networks &amp; Machine Learning</h2>
+
+<h3>What is an Artificial Neural Network?</h3>
+<p>
+  An ANN is a computer model loosely inspired by the brain. Its basic unit is a
+  <b>neuron</b>: a tiny decision-maker that takes some numbers in, multiplies each
+  by a <b>weight</b> (how much it cares about that input), adds a <b>bias</b>
+  (a baseline nudge), and produces one output. Stack many neurons side-by-side and
+  you get a <b>layer</b>; stack layers front-to-back and you get a <b>network</b>,
+  where each layer feeds the next. In this project a network is literally a Python
+  <i>list of layers, where each layer is a list of neuron dictionaries</i> holding
+  their weights.
+</p>
+
+<h3>The forward pass — making a guess</h3>
+<p>
+  To make a prediction, numbers flow from the input layer to the output layer. Each
+  neuron computes <code>z = (weights · inputs) + bias</code> (the linear step), then
+  squashes it through a non-linear <b>activation function</b> — here the
+  <b>sigmoid</b> <code>1 / (1 + e<sup>-z</sup>)</code> for hidden layers and
+  <b>softmax</b> at the end, which turns the outputs into probabilities that sum to
+  100%. The class with the highest probability is the network's answer, and that
+  probability is its <b>confidence</b>.
+</p>
+
+<h3>How it learns — loss &amp; backpropagation</h3>
+<p>
+  At first the weights are random, so the guesses are wrong. We measure
+  <i>how</i> wrong with a <b>loss</b> (cross-entropy). Then comes the clever part,
+  <b>backpropagation</b>: using calculus (the chain rule) the network figures out
+  how much each individual weight contributed to the error. <b>Gradient descent</b>
+  then nudges every weight a small step in the direction that reduces the loss —
+  like walking downhill to the lowest valley.
+</p>
+<ul>
+  <li><b>Learning rate</b> — how big each downhill step is (too big overshoots,
+      too small crawls).</li>
+  <li><b>Momentum</b> — keep rolling in a consistent direction so learning is
+      smoother and faster, like a ball gaining speed downhill.</li>
+  <li><b>Mini-batches</b> — learn from a small handful of examples at a time
+      instead of one or all, balancing speed and stability.</li>
+  <li><b>Epoch</b> — one full pass through all the training data; training repeats
+      for many epochs until the model is good.</li>
+  <li><b>Train / validation split</b> — we train on one part of the data and check
+      accuracy on unseen data, to make sure the model truly learned and didn't just
+      memorise.</li>
+</ul>
+
+<h3>Why a GPU? (the parallel "expressway")</h3>
+<p>
+  The most expensive operation in a neural net is <b>matrix multiplication</b>. On a
+  normal CPU it's done largely one number at a time. A <b>GPU</b> has thousands of
+  small cores, so we give each core one cell of the answer to compute and they all
+  work <b>simultaneously</b>. This project writes those GPU programs (<b>CUDA
+  kernels</b>) by hand, keeping the data on the GPU during training. On the RTX 3050
+  this makes the core matrix multiply roughly <b>2,000× faster</b> than a naive
+  CPU loop, and the wide-network training several times faster than optimised CPU
+  math.
+</p>
+
+<h3>What this particular model learned</h3>
+<p>
+  The dataset shown is an <b>intertwined spiral</b> — several spiral arms wound
+  around each other. It is deliberately <b>non-linear</b>: no straight line can
+  separate the classes, so the network must bend its decision boundary into spiral
+  shapes. Watch in the plot how the coloured regions curl to follow each arm. That
+  curved boundary is the visible proof that the network learned a genuinely
+  non-trivial pattern — and it does so with near-certain confidence on points it
+  gets right.
+</p>
+
+<footer>
+  Built by <b>vikasjakkula</b> with <b>Claude</b> · open
+  <code>web/index.html</code> locally · regenerate data with
+  <code>python export_web.py</code>
+</footer>
+
+</div>
+
+<script src="data.js"></script>
+<script>
+const D = window.PRED_DATA;
+const $ = s => document.querySelector(s);
+
+if(!D){
+  document.body.insertAdjacentHTML("afterbegin",
+   "<p style='color:#f87171;text-align:center;padding:20px'>data.js not found — run "+
+   "<code>python export_web.py</code> first.</p>");
+} else {
+  // ---- stat cards ----
+  const cards = [
+    ["Accuracy", D.accuracy+"%"],
+    ["Mean confidence", D.mean_conf+"%"],
+    ["Classes", D.n_classes],
+    ["Parameters", D.n_params.toLocaleString()],
+    ["Near-sure & correct", D.sure_correct+"%"],
+  ];
+  $("#cards").innerHTML = cards.map(c=>
+    `<div class="card"><div class="big">${c[1]}</div><div class="lbl">${c[0]}</div></div>`
+  ).join("");
+
+  // ---- legend ----
+  $("#legend").innerHTML = D.colors.map((col,i)=>
+    `<span><i class="dot" style="background:${col}"></i>class ${i}</span>`).join("")
+    + `<span><i class="dot" style="background:transparent;border:2px solid #f87171"></i>mis-classified</span>`;
+
+  // ---- confidence bars ----
+  const order=["50","90","99","999"];
+  $("#bars").innerHTML = order.map(k=>{
+    const v=D.bars[k]||0, lab = k==="999" ? "99.9" : k;
+    return `<div style="margin:8px 0">
+      <div class="small muted" style="display:flex;justify-content:space-between">
+        <span>≥ ${lab}% sure</span><span>${v}%</span></div>
+      <div class="bar"><i style="width:${v}%"></i></div></div>`;
+  }).join("");
+
+  // ---- examples table ----
+  $("#examples tbody").innerHTML = D.examples.map((e,i)=>
+    `<tr><td>${i+1}</td><td>(${e.x}, ${e.y})</td><td>${e.t}</td>
+     <td>${e.p}</td><td>${e.c}%</td>
+     <td class="${e.ok?'ok':'bad'}">${e.ok?'✓ correct':'✗ wrong'}</td></tr>`
+  ).join("");
+
+  // ---- canvas: decision boundary + points ----
+  const cv=$("#plot"), ctx=cv.getContext("2d");
+  const W=cv.width, H=cv.height, b=D.bounds;
+  const sx = x => (x-b.xmin)/(b.xmax-b.xmin)*W;
+  const sy = y => H-(y-b.ymin)/(b.ymax-b.ymin)*H;   // flip y for screen
+  // boundary shading
+  const n=D.grid_n, cw=W/n, ch=H/n;
+  for(let j=0;j<n;j++) for(let i=0;i<n;i++){
+    const cls=D.grid[j*n+i];
+    ctx.fillStyle=D.colors[cls];
+    ctx.globalAlpha=0.16 + 0.12*(D.grid_conf[j*n+i]||0); // surer => stronger tint
+    ctx.fillRect(i*cw, H-(j+1)*ch, cw+1, ch+1);
+  }
+  ctx.globalAlpha=1;
+  // points
+  for(const p of D.points){
+    ctx.beginPath();
+    ctx.arc(sx(p.x), sy(p.y), 2.6, 0, 7);
+    ctx.fillStyle=D.colors[p.p];
+    ctx.fill();
+    if(p.t!==p.p){ ctx.lineWidth=1.6; ctx.strokeStyle="#f87171"; ctx.stroke(); }
+  }
+}
+</script>
+</body>
+</html>

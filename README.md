@@ -110,6 +110,16 @@ python train.py --dataset seeds
 python benchmark.py
 ```
 
+**4) See the predictions in a browser (web frontend):**
+```bash
+python export_web.py          # runs the trained model -> web/data.js
+# then open web/index.html (no server needed)
+```
+A self-contained page that draws the model's predicted classes and learned
+**decision boundary**, shows accuracy/confidence stats and an example table, and
+includes a written summary of the project and of how ANNs / ML work. Match the
+flags to your training, e.g. `--dataset spiral --classes 6 --spiral-noise 0.05`.
+
 ### 🏋️‍♂️ Train a STRONG model for a long time (real GPU training)
 
 `engine.py` learns one example at a time (great for understanding, but CPU-bound).
