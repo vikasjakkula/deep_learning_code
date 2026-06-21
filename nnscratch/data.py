@@ -149,6 +149,49 @@ def make_moons(n_samples: int = 1000, noise: float = 0.2, seed: int = 42
     return rows
 
 
+def make_spiral(n_samples: int = 6000, n_classes: int = 3, noise: float = 0.18,
+                n_turns: float = 2.5, n_features: int = 2, seed: int = 42
+                ) -> List[List[float]]:
+    """Intertwined spiral arms -- a classic HARD, non-linear classification task.
+
+    Each class is one arm of a spiral that winds around the others, so the
+    decision boundary is highly curved and NOT linearly separable.  A linear
+    model is stuck near chance; a deep network keeps improving for many
+    epochs -- which is exactly what makes it a good "train it for a long time"
+    benchmark.
+
+    With ``n_features > 2`` the 2-D spiral is embedded into a higher-dimensional
+    space (rotated) and padded with noisy distractor features, giving bigger
+    matrices for the GPU while keeping the problem hard.
+    """
+    rng = np.random.default_rng(seed)
+    per = n_samples // n_classes
+    X2 = np.zeros((per * n_classes, 2), dtype=np.float64)
+    y = np.zeros((per * n_classes,), dtype=int)
+    for c in range(n_classes):
+        t = np.linspace(0.05, 1.0, per)
+        radius = t
+        theta = t * n_turns * 2 * np.pi + c * (2 * np.pi / n_classes)
+        theta = theta + rng.normal(0, noise, per)
+        idx = slice(c * per, (c + 1) * per)
+        X2[idx, 0] = radius * np.cos(theta)
+        X2[idx, 1] = radius * np.sin(theta)
+        y[idx] = c
+
+    if n_features <= 2:
+        X = X2
+    else:
+        # Embed the 2-D spiral into n_features dims via a random projection,
+        # then append pure-noise features the model must learn to ignore.
+        proj = rng.normal(0, 1, size=(2, n_features))
+        X = X2 @ proj
+        X += rng.normal(0, 0.05, size=X.shape)
+
+    rows = [list(map(float, X[i])) + [float(y[i])] for i in range(len(y))]
+    rng.shuffle(rows)
+    return rows
+
+
 def xor_dataset() -> List[List[float]]:
     """The canonical XOR problem used throughout the source curriculum."""
     return [[0, 0, 0], [0, 1, 1], [1, 0, 1], [1, 1, 0]]

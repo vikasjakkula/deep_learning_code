@@ -12,3 +12,7 @@ env/
 *.so
 *.log
 .DS_Store
+
+# trained model checkpoints / logs from train_long.py
+models/
+*.npz

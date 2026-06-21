@@ -110,6 +110,32 @@ python train.py --dataset seeds
 python benchmark.py
 ```
 
+### 🏋️‍♂️ Train a STRONG model for a long time (real GPU training)
+
+`engine.py` learns one example at a time (great for understanding, but CPU-bound).
+For serious GPU training there's **`gpu_mlp.MLPGPU`** — a batched network whose
+forward pass *and* backprop run as GPU matrix multiplies — plus **`train_long.py`**,
+which trains for as long as you let it and **saves the best model continuously**
+(so a multi-hour run is never wasted, and Ctrl+C stops cleanly).
+
+```bash
+# train for 30 minutes on a hard "spiral" problem; best model is checkpointed
+.venv\Scripts\python train_long.py --minutes 30
+
+# or run a fixed number of epochs on a big, deep network
+.venv\Scripts\python train_long.py --epochs 5000 --hidden 256 128 64
+
+# come back later and keep improving the same model
+.venv\Scripts\python train_long.py --resume models/best_model.npz --minutes 60
+```
+
+It writes to `models/`: `best_model.npz` (highest accuracy so far),
+`last_model.npz` (for resuming), and `training_log.csv` (the learning curve).
+The default **spiral** dataset is non-linear and hard on purpose, so accuracy
+keeps climbing the longer you train — that's the whole point. Key flags:
+`--minutes`, `--epochs`, `--hidden`, `--batch-size`, `--lr`, `--momentum`,
+`--lr-decay`, `--dataset {spiral,synthetic,seeds,heart,moons}`, `--resume`.
+
 Tiny code example:
 ```python
 from nnscratch import NeuralNetwork
