@@ -219,36 +219,46 @@ def main():
 
             lr = args.lr / (1.0 + args.lr_decay * epoch)
             ep_t0 = time.perf_counter()
+            std_loss = None
             if use_fast:
                 net.train_epoch(d_X, d_Y, n_train, lr, args.momentum,
                                 args.clip, rng.permutation(n_train))
-                loss = net.loss(loss_X, loss_Y)
             else:
-                loss = net.train_epoch(Xtr, Ytr, lr, args.batch_size,
-                                       args.momentum, rng, max_grad_norm=args.clip)
+                std_loss = net.train_epoch(Xtr, Ytr, lr, args.batch_size,
+                                           args.momentum, rng, max_grad_norm=args.clip)
             ep_dt = time.perf_counter() - ep_t0
-            val_acc = net.evaluate(Xva, yva)
-            elapsed = time.perf_counter() - t0
 
-            # checkpoint the best model whenever val accuracy improves
-            improved = val_acc > best_acc
-            if improved:
-                best_acc = val_acc
-                net.save(best_path)
+            # Metrics + checkpointing.  Wrapped so a transient out-of-memory
+            # (this machine's commit limit is tight) skips one report instead
+            # of killing the whole run -- training simply continues.
+            try:
+                if use_fast:
+                    val_acc, loss = net.metrics(Xva, yva, loss_X, loss_Y)
+                else:
+                    val_acc, loss = net.evaluate(Xva, yva), std_loss
+                elapsed = time.perf_counter() - t0
 
-            with open(log_path, "a") as fh:
-                fh.write(f"{epoch},{loss:.6f},{val_acc:.6f},{elapsed:.1f}\n")
+                improved = val_acc > best_acc
+                if improved:
+                    best_acc = val_acc
+                    net.save(best_path)
 
-            if epoch % args.save_every == 0:
-                net.save(last_path)
+                with open(log_path, "a") as fh:
+                    fh.write(f"{epoch},{loss:.6f},{val_acc:.6f},{elapsed:.1f}\n")
 
-            sps = Xtr.shape[0] / ep_dt
-            mark = " *best*" if improved else ""
-            remain = "" if deadline == float("inf") else \
-                f" | {max(0, deadline - now) / 60:5.1f} min left"
-            print(f" epoch {epoch:5d} | loss {loss:.4f} | val_acc "
-                  f"{val_acc * 100:6.2f}% | {ep_dt:5.2f}s "
-                  f"({sps:,.0f} samp/s){remain}{mark}")
+                if epoch % args.save_every == 0:
+                    net.save(last_path)
+
+                sps = Xtr.shape[0] / ep_dt
+                mark = " *best*" if improved else ""
+                remain = "" if deadline == float("inf") else \
+                    f" | {max(0, deadline - now) / 60:5.1f} min left"
+                print(f" epoch {epoch:5d} | loss {loss:.4f} | val_acc "
+                      f"{val_acc * 100:6.2f}% | {ep_dt:5.2f}s "
+                      f"({sps:,.0f} samp/s){remain}{mark}")
+            except MemoryError:
+                print(f" epoch {epoch:5d} | trained ({ep_dt:.2f}s) but skipped "
+                      f"metrics/checkpoint - system low on memory")
             epoch += 1
     finally:
         net.save(last_path)

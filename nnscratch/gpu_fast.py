@@ -327,6 +327,16 @@ class FastMLPGPU:
         pred = np.argmax(self._np_forward(X), axis=1)
         return float(np.mean(pred == np.asarray(y)))
 
+    def metrics(self, X_val, y_val, X_loss, Y_loss):
+        """Validation accuracy AND a loss estimate from a SINGLE host sync,
+        to halve per-epoch memory churn during long runs."""
+        self.sync_to_host()
+        acc = float(np.mean(np.argmax(self._np_forward(X_val), axis=1)
+                            == np.asarray(y_val)))
+        p = np.clip(self._np_forward(X_loss), 1e-12, 1.0)
+        loss = float(-np.sum(Y_loss * np.log(p)) / X_loss.shape[0])
+        return acc, loss
+
     def loss(self, X, Y):
         self.sync_to_host()
         p = np.clip(self._np_forward(X), 1e-12, 1.0)
