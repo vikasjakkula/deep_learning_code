@@ -134,6 +134,9 @@ def main():
     ap.add_argument("--resume", default="", help="path to a .npz checkpoint")
     ap.add_argument("--save-every", type=int, default=10,
                     help="also write last_model.npz every N epochs")
+    ap.add_argument("--eval-every", type=int, default=1,
+                    help="compute val accuracy/loss every N epochs (raise it to "
+                         "cut memory use on tight machines)")
     args = ap.parse_args()
 
     if args.minutes <= 0 and args.epochs <= 0:
@@ -232,9 +235,16 @@ def main():
                                            args.momentum, rng, max_grad_norm=args.clip)
             ep_dt = time.perf_counter() - ep_t0
 
-            # Metrics + checkpointing.  Wrapped so a transient out-of-memory
-            # (this machine's commit limit is tight) skips one report instead
-            # of killing the whole run -- training simply continues.
+            # Only evaluate/checkpoint every --eval-every epochs (and on the
+            # final epoch) -- fewer host allocations on memory-tight machines.
+            if epoch % args.eval_every != 0:
+                epoch += 1
+                continue
+
+            # Metrics + checkpointing.  Wrapped so a transient memory shortfall
+            # (this machine's commit limit is tight) -- whether it surfaces as a
+            # MemoryError or a cascading CUDA cleanup error -- skips one report
+            # instead of killing the whole run; training simply continues.
             try:
                 if use_fast:
                     val_acc, loss = net.metrics(Xva, yva, loss_X, loss_Y)
@@ -260,9 +270,9 @@ def main():
                 print(f" epoch {epoch:5d} | loss {loss:.4f} | val_acc "
                       f"{val_acc * 100:6.2f}% | {ep_dt:5.2f}s "
                       f"({sps:,.0f} samp/s){remain}{mark}")
-            except MemoryError:
+            except Exception as exc:
                 print(f" epoch {epoch:5d} | trained ({ep_dt:.2f}s) but skipped "
-                      f"metrics/checkpoint - system low on memory")
+                      f"metrics/checkpoint - low memory ({type(exc).__name__})")
             epoch += 1
     finally:
         net.save(last_path)

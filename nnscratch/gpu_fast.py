@@ -306,8 +306,17 @@ class FastMLPGPU:
     # metrics use host weights (cheap copy once per epoch) + NumPy forward
     # ------------------------------------------------------------------
     def sync_to_host(self):
-        self.W_host = [d.copy_to_host() for d in self.dW]
-        self.b_host = [d.copy_to_host() for d in self.db]
+        # Copy device weights into PRE-ALLOCATED host buffers (no per-call
+        # allocation) -- important on machines with little free RAM, where
+        # repeated allocation would exhaust the system commit limit.
+        if getattr(self, "_hW", None) is None:
+            self._hW = [np.empty_like(w) for w in self.W_host]
+            self._hb = [np.empty_like(b) for b in self.b_host]
+        for i in range(self.L):
+            self.dW[i].copy_to_host(self._hW[i])
+            self.db[i].copy_to_host(self._hb[i])
+        self.W_host = self._hW
+        self.b_host = self._hb
 
     def _np_forward(self, X):
         cur = np.ascontiguousarray(X, np.float32)
